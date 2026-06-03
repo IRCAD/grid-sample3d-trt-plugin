@@ -287,9 +287,13 @@ const char* GridSample3DPlugin::getPluginNamespace() const noexcept{
 /********* GridSample3DPluginCreator **************/
 /**************************************************/
 GridSample3DPluginCreator::GridSample3DPluginCreator() {
-    setPluginNamespace(GRID_SAMPLER_PLUGIN_NAMESPACE);
+    mPluginAttributes.clear();
+    mPluginAttributes.emplace_back("interpolation_mode", nullptr, PluginFieldType::kINT32, 1);
+    mPluginAttributes.emplace_back("padding_mode",       nullptr, PluginFieldType::kINT32, 1);
+    mPluginAttributes.emplace_back("align_corners",      nullptr, PluginFieldType::kINT32, 1);
     mFC.nbFields = static_cast<int32_t>(mPluginAttributes.size());
-    mFC.fields = mPluginAttributes.data();
+    mFC.fields   = mPluginAttributes.data();
+    setPluginNamespace(GRID_SAMPLER_PLUGIN_NAMESPACE);
 }
 
 GridSample3DPluginCreator::~GridSample3DPluginCreator() {}
