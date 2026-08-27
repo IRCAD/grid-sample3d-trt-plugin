@@ -2,6 +2,7 @@
 #include <fstream>
 #include <filesystem>
 #include <iostream>
+#include <vector>
 #include <assert.h>
 #include <math.h>
 
@@ -307,10 +308,123 @@ void testGridSample3dFloat32() {
 }
 
 
+// Regression test for a bug where the nearest-neighbor kernel never advanced
+// its per-channel input/output pointers, so every channel read from channel 0
+// of the input and only channel 0 of the output was ever written (all other
+// channels stayed uninitialized). Uses an identity grid (align_corners=true)
+// so each output voxel must exactly equal the input voxel at the same
+// (c, d, h, w) coordinates, across multiple channels.
+void testGridSample3dNearestMultiChannel() {
+
+    std::cout << "Test GridSample3dNearestMultiChannel..." << std::endl;
+
+    size_t N = 1;
+    size_t C = 3;
+    size_t D_in = 4, H_in = 4, W_in = 4;
+    size_t D_grid = D_in, H_grid = H_in, W_grid = W_in;
+
+    auto input_number = N * C * D_in * H_in * W_in;
+    auto grid_number = N * D_grid * H_grid * W_grid * 3;
+    auto output_number = N * C * D_grid * H_grid * W_grid;
+
+    std::vector<float> input(input_number);
+    std::vector<float> grid(grid_number);
+    // Fill with a sentinel value so any output element left unwritten by the
+    // kernel (as happened for channels > 0 before the fix) is detected.
+    std::vector<float> output(output_number, -1.f);
+    std::vector<float> output_ref(output_number);
+
+    for (size_t c = 0; c < C; c++) {
+        for (size_t d = 0; d < D_in; d++) {
+            for (size_t h = 0; h < H_in; h++) {
+                for (size_t w = 0; w < W_in; w++) {
+                    size_t idx = ((c * D_in + d) * H_in + h) * W_in + w;
+                    // unique value per (c, d, h, w) so any channel mix-up is detectable
+                    input[idx] = static_cast<float>(c * 1000 + d * 100 + h * 10 + w);
+                }
+            }
+        }
+    }
+
+    // Identity mapping grid (align_corners = true): grid position (d, h, w)
+    // maps back to input index (d, h, w) for every channel.
+    for (size_t d = 0; d < D_grid; d++) {
+        for (size_t h = 0; h < H_grid; h++) {
+            for (size_t w = 0; w < W_grid; w++) {
+                size_t base = ((d * H_grid + h) * W_grid + w) * 3;
+                grid[base + 0] = 2.f * static_cast<float>(w) / static_cast<float>(W_in - 1) - 1.f;
+                grid[base + 1] = 2.f * static_cast<float>(h) / static_cast<float>(H_in - 1) - 1.f;
+                grid[base + 2] = 2.f * static_cast<float>(d) / static_cast<float>(D_in - 1) - 1.f;
+            }
+        }
+    }
+
+    for (size_t c = 0; c < C; c++) {
+        for (size_t d = 0; d < D_grid; d++) {
+            for (size_t h = 0; h < H_grid; h++) {
+                for (size_t w = 0; w < W_grid; w++) {
+                    size_t out_idx = ((c * D_grid + d) * H_grid + h) * W_grid + w;
+                    size_t in_idx = ((c * D_in + d) * H_in + h) * W_in + w;
+                    output_ref[out_idx] = input[in_idx];
+                }
+            }
+        }
+    }
+
+    float* d_input;
+    float* d_grid;
+    float* d_output;
+    cudaMalloc(&d_input, input_number * sizeof(float));
+    cudaMalloc(&d_grid, grid_number * sizeof(float));
+    cudaMalloc(&d_output, output_number * sizeof(float));
+
+    cudaMemcpy(d_input, input.data(), input_number * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_grid, grid.data(), grid_number * sizeof(float), cudaMemcpyHostToDevice);
+    // seed device output with the sentinel too, so unwritten elements aren't
+    // masked by whatever cudaMalloc happened to leave behind
+    cudaMemcpy(d_output, output.data(), output_number * sizeof(float), cudaMemcpyHostToDevice);
+
+    cudaStream_t stream;
+    cudaStreamCreate(&stream);
+
+    grid_sample_3d_cuda<float>(
+                            d_input,
+                            d_grid,
+                            N, C, D_in, H_in, W_in,
+                            D_grid, H_grid, W_grid,
+                            true,
+                            GridSample3DInterpolationMode::Nearest,
+                            GridSample3DPaddingMode::Zeros,
+                            d_output,
+                            stream);
+
+    cudaStreamSynchronize(stream);
+
+    cudaMemcpy(output.data(), d_output, output_number * sizeof(float), cudaMemcpyDeviceToHost);
+
+    float max_diff = 0.f;
+    for (size_t i = 0; i < output_number; i++) {
+        float diff = fabs(output[i] - output_ref[i]);
+        if (diff > max_diff) {
+            max_diff = diff;
+        }
+        assert(diff < 1e-3f && "grid_sample_3d nearest kernel: multi-channel mismatch");
+    }
+    printf("Max error: %f\n", max_diff);
+
+    cudaFree(d_input);
+    cudaFree(d_grid);
+    cudaFree(d_output);
+    cudaStreamDestroy(stream);
+
+    std::cout << "Test GridSample3dNearestMultiChannel passed" << std::endl;
+}
+
 int main(int argc, char** argv) {
     // testGridSample3dFloat16();
     testGridSample3dFloat32();
-    
+    testGridSample3dNearestMultiChannel();
+
     return 0;
 
 }
