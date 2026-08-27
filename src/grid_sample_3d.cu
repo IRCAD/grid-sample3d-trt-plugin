@@ -62,6 +62,8 @@ __global__ void grid_sample_3d_nearest_kernel(
         } else {
             *output_NCDHW_offset = static_cast<scalar_t>(0);
         }
+        input_NC_offset += input_stride_C;
+        output_NCDHW_offset += output_stride_C;
     }
 }
 
