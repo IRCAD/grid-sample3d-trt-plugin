@@ -27,3 +27,16 @@ success = ctypes.CDLL("build/libgrid_sample_3d_plugin.so", mode = ctypes.RTLD_GL
 ```
 
 see [test_grid_sample3d.py](./test/test_grid_sample3d_plugin.py) for more details.
+
+## Tensor precision
+
+The plugin supports both TensorRT `FLOAT` and `HALF` formats. The image input,
+grid input, and output must use the same format. A newly created plugin defaults
+to `HALF`, preserving the low-memory inference behavior used by existing
+consumers; TensorRT selects `FLOAT` when the network tensors are explicitly
+`FLOAT`. Execution dispatch uses the datatype from the current TensorRT
+execution descriptors, so a dynamic-shape profile cannot leave `enqueue` using
+a stale datatype from an earlier configuration.
+
+The TensorRT integration test checks both supported precisions, output type
+propagation, and rejection of mixed image/grid formats.

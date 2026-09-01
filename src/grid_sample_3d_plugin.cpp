@@ -73,7 +73,8 @@ GridSample3DPlugin::GridSample3DPlugin(const std::string name,
     mLayerName(name),
     mAlignCorners(alignCorners),
     mInterpolationMode(interpolationMode),
-    mPaddingMode(paddingMode) {}                                       
+    mPaddingMode(paddingMode),
+    mDataType(DataType::kHALF) {}
 
 GridSample3DPlugin::GridSample3DPlugin(const std::string name, 
                                        const void *buffer,
@@ -185,7 +186,12 @@ int32_t GridSample3DPlugin::enqueue(PluginTensorDesc const* inputDesc,
                                     void* workspace, 
                                     cudaStream_t stream) noexcept{
     int status = -1;                                
-    if(mDataType == DataType::kFLOAT) {
+    const DataType dataType = inputDesc[0].type;
+    if (dataType != inputDesc[1].type || dataType != outputDesc[0].type) {
+        return 1;
+    }
+
+    if(dataType == DataType::kFLOAT) {
         status = grid_sample_3d_cuda<float>(
             static_cast<const float*>(inputs[0]),
             static_cast<const float*>(inputs[1]),
@@ -197,8 +203,7 @@ int32_t GridSample3DPlugin::enqueue(PluginTensorDesc const* inputDesc,
             static_cast<float*>(outputs[0]),
             stream
         );
-    } else if(mDataType == DataType::kHALF) {
-    // } else {
+    } else if(dataType == DataType::kHALF) {
         status = grid_sample_3d_cuda<half>(
             static_cast<const half*>(inputs[0]),
             static_cast<const half*>(inputs[1]),
