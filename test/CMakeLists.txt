@@ -14,4 +14,13 @@ add_executable(${TEST_GRID_SAMPLE} test.cpp)
 target_include_directories(${TEST_GRID_SAMPLE} PUBLIC ${PROJECT_INCLUDE_DIR} ${CUDA_ROOT}/include)
 target_link_libraries(${TEST_GRID_SAMPLE} ${PARENT_PROJECT_NAME} CUDA::cudart)
 
-set_target_properties(${TEST_GRID_SAMPLE} PROPERTIES CUDA_ARCHITECTURES "89")
+# CMAKE_CUDA_ARCHITECTURES is inherited from the parent scope (defaults to
+# "native", or whatever -DCMAKE_CUDA_ARCHITECTURES=... was passed on the
+# command line), so no per-target override is needed here.
+
+# test.cpp reads data files using paths relative to the top-level build
+# directory (e.g. "../test/data/input.txt"), not this target's own binary
+# directory, so the working directory must be set explicitly.
+add_test(NAME ${TEST_GRID_SAMPLE}
+         COMMAND ${TEST_GRID_SAMPLE}
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})

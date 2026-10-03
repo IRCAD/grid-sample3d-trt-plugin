@@ -10,13 +10,36 @@ This plugin is a custom implementation of the 3D GridSample operator for TensorR
 ```shell
 export PATH=/usr/local/cuda/bin:$PATH
 ```
-2. Build the plugin with the following commands:
+
+2. Locate TensorRT on your system. TensorRT is not bundled with the CUDA
+   toolkit, so its headers and libraries need to be pointed to explicitly:
+   - `-DTENSORRT_INCLUDE_DIR=/path/to/TensorRT/include` — directory
+     containing `NvInfer.h` (e.g. a downloaded TensorRT SDK's `include/`
+     directory, or `/usr/include/x86_64-linux-gnu` if TensorRT was installed
+     via apt).
+   - `-DTENSORRT_LIB_DIR=/path/to/dir` — directory containing
+     `libnvinfer.so[.N]` (e.g. a conda/venv's
+     `lib/pythonX.Y/site-packages/tensorrt_libs` if TensorRT was installed
+     via the `tensorrt` pip package, or `/usr/lib/x86_64-linux-gnu` if
+     installed via apt). If omitted, the build auto-detects this from the
+     active Python environment's `tensorrt_libs` package (useful when
+     building inside a conda env that already has `tensorrt` installed via
+     pip so the plugin links against the same TensorRT version used at
+     runtime).
+
+3. Build the plugin with the following commands:
 ```shell
-mkdir build && cd build
-cmake .. -DTensorRT_ROOT=/usr/local/tensorrt
-make
+cmake -B build -S . \
+  -DTENSORRT_INCLUDE_DIR=/path/to/TensorRT/include \
+  -DTENSORRT_LIB_DIR=/path/to/dir/containing/libnvinfer.so
+cmake --build build -j$(nproc)
 ```
- 
+
+   This builds `libgrid_sample_3d_plugin.so` plus a standalone C++ test
+   executable (`build/test/test_grid_sample`, run with `cd build && ctest`).
+   If only the shared library is needed (e.g. for a Python-only consumer),
+   skip the test executable with `-DBUILD_TESTS=OFF`.
+
 ### Usage 
 
 for python code (only on Linux platform), load the plugin with:
